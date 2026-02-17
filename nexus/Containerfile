@@ -1,0 +1,53 @@
+FROM registry.access.redhat.com/ubi8/ubi:8.7
+LABEL   org.opencontainers.image.title="Nexus Container" \
+        org.opencontainers.image.description="Sonatype Nexus on UBI 8.7 with non-root runtime usr" 
+
+ARG NEXUS_ARCHIVE="nexus-3.30.1-01-unix.tar.gz"
+ARG NEXUS_SHA256=""
+
+# Task requires JDK 8, so pin Nexus ver. to Java 8 compat.
+ENV NEXUS_HOME="/opt/nexus" \
+    NEXUS_DATA="/opt/nexus/sonatype-work" \
+    JAVA_HOME="/usr/lib/jvm/java-1.8.0-openjdk" \
+    PATH="/usr/lib/jvm/java-1.8.0-openjdk/bin:${PATH}" \
+    RUN_AS_USER="nexus" \
+    INSTALL4J_ADD_VM_PARAMS="-Xms512m -Xmx512m -XX:MaxDirectMemorySize=512m -Djava.util.prefs.userRoot=/opt/nexus/sonatype-work/javaprefs"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN dnf -y update && dnf -y install --setopt=install_weak_deps=false java-1.8.0-openjdk-devel tar gzip shadow-utils && dnf clean all && rm -rf /var/cache/dnf /var/tmp* /tmp/*
+
+RUN groupadd --system nexus && useradd --system --gid nexus --home-dir "${NEXUS_HOME}" --shell /sbin/nologin nexus && mkdir -p "${NEXUS_HOME}"
+
+WORKDIR ${NEXUS_HOME}
+COPY ${NEXUS_ARCHIVE} /tmp/nexus.tar.gz
+
+# Verification of archive intergrity in-image when checksum is provided by the build script
+RUN if [ -n "${NEXUS_SHA256}" ]; then echo "${NEXUS_SHA256}  /tmp/nexus.tar.gz" | sha256sum -c -; fi && \
+    tar -xzf /tmp/nexus.tar.gz -C /tmp && \
+    NEXUS_EXTRACT_DIR="$(find /tmp -mindepth 1 -maxdepth 1 -type d -name 'nexus-*' | head -n 1)" && \
+    [ -n "${NEXUS_EXTRACT_DIR}" ] && \
+    cp -a "${NEXUS_EXTRACT_DIR}"/. "${NEXUS_HOME}/" && \
+    mkdir -p "${NEXUS_DATA}" && \
+    if [ -d /tmp/sonatype-work ]; then cp -a /tmp/sonatype-work/. "${NEXUS_DATA}/"; fi && \
+    if grep -Eq '^#?run_as_user=' "${NEXUS_HOME}/bin/nexus.rc"; then \
+      sed -i "s|^#\?run_as_user=.*|run_as_user=\"${RUN_AS_USER}\"|g" "${NEXUS_HOME}/bin/nexus.rc"; \
+    else \
+      echo "run_as_user=\"${RUN_AS_USER}\"" >> "${NEXUS_HOME}/bin/nexus.rc"; \
+    fi && \
+    rm -rf /tmp/nexus.tar.gz /tmp/nexus-* /tmp/sonatype-work && \
+    chown -R nexus:nexus "${NEXUS_HOME}" && \
+    chmod -R u=rwX,g=rX,o= "${NEXUS_HOME}"
+
+
+EXPOSE 8081
+
+WORKDIR ${NEXUS_HOME}
+VOLUME ["/opt/nexus/sonatype-work"]
+USER nexus
+
+HEALTHCHECK --interval= --timeout=5s --start-period=120s --retries=3 CMD bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8081' || exit1
+STOPSIGNAL SIGTERM
+
+ENTRYPOINT [ "./bin/nexus" ]
+CMD ["run"]
