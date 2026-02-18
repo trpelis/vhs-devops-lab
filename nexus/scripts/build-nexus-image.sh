@@ -5,6 +5,7 @@ set -euo pipefail
 umask 027
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NEXUS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 NEXUS_VERSION="${NEXUS_VERSION:-3.30.1-01}"
 NEXUS_ARCHIVE="${NEXUS_ARCHIVE:-nexus-${NEXUS_VERSION}-unix.tar.gz}"
@@ -13,11 +14,11 @@ NEXUS_SHA256="${NEXUS_SHA256:-}"
 ALLOW_MISSING_CHECKSUM="${ALLOW_MISSING_CHECKSUM:-false}"
 IMAGE_NAME="${IMAGE_NAME:-localhost/nexus-ubi8}"
 IMAGE_TAG="${IMAGE_TAG:-${NEXUS_VERSION}}"
-CONTAINERFILE="${CONTAINERFILE:-${SCRIPT_DIR}/Containerfile}"
+CONTAINERFILE="${CONTAINERFILE:-${NEXUS_DIR}/Containerfile}"
 
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
-RED='\033[1:31m'
+RED='\033[1;31m'
 
 logInfo() {
     printf "${YELLOW}>> %s\n" "$1"
@@ -63,7 +64,7 @@ validateInput() {
 
 downloadNexus() {
     local expected_sha="$1"
-    local archive_path="${SCRIPT_DIR}/${NEXUS_ARCHIVE}"
+    local archive_path="${NEXUS_DIR}/${NEXUS_ARCHIVE}"
     local tmp_path="${archive_path}.tmp"
 
     if [ -f "${archive_path}" ]; then
@@ -99,19 +100,19 @@ fetchChecksum() {
 
 verifyChecksum() {
     local expected_sha="$1"
-    local archive_path="${SCRIPT_DIR}/${NEXUS_ARCHIVE}"
+    local archive_path="${NEXUS_DIR}/${NEXUS_ARCHIVE}"
 
     if [ -z "${expected_sha}" ]; then
         if [ "${ALLOW_MISSING_CHECKSUM}" = "true" ]; then
-            logWarn "Cant get Nexus checksum, continuing because of ALLOW_MISSING_CHEKSUM=true"
+            logWarn "Cant get Nexus checksum, continuing because of ALLOW_MISSING_CHECKSUM=true"
             return
         fi
-        logError "Cant get Nexus checksu, set ALLOW_MISSING_CHECKSUM=true to bypass this"
+        logError "Cant get Nexus checksum, set ALLOW_MISSING_CHECKSUM=true to bypass this"
         exit 1
     fi
 
     logInfo "Validating SHA256 checksum"
-    echo "${expected_sha} ${archive_path}" | sha256sum -c -
+    echo "${expected_sha}  ${archive_path}" | sha256sum -c -
 }
 
 buildImage() {
@@ -125,7 +126,7 @@ buildImage() {
         -t "${IMAGE_NAME}:${IMAGE_TAG}" \
         -t "${IMAGE_NAME}:latest" \
         -f "${CONTAINERFILE}" \
-        "${SCRIPT_DIR}"
+        "${NEXUS_DIR}"
 }
 
 main() {

@@ -46,7 +46,7 @@ WORKDIR ${NEXUS_HOME}
 VOLUME ["/opt/nexus/sonatype-work"]
 USER nexus
 
-HEALTHCHECK --interval= --timeout=5s --start-period=120s --retries=3 CMD bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8081' || exit1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 CMD bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8081'
 STOPSIGNAL SIGTERM
 
 ENTRYPOINT [ "./bin/nexus" ]
