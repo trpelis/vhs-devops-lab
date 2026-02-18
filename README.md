@@ -30,6 +30,11 @@ Optional:
 IMAGE_NAME=localhost/nexus-ubi8 IMAGE_TAG=3.30.1-01 ./scripts/build-nexus-image.sh
 ```
 
+Optional image format (default is `docker`, so `HEALTHCHECK` is kept):
+
+```bash
+IMAGE_FORMAT=docker ./scripts/build-nexus-image.sh
+```
 Optional manual checksum pinning:
 
 ```bash
