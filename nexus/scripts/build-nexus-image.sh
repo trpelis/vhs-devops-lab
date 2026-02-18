@@ -14,6 +14,7 @@ NEXUS_SHA256="${NEXUS_SHA256:-}"
 ALLOW_MISSING_CHECKSUM="${ALLOW_MISSING_CHECKSUM:-false}"
 IMAGE_NAME="${IMAGE_NAME:-localhost/nexus-ubi8}"
 IMAGE_TAG="${IMAGE_TAG:-${NEXUS_VERSION}}"
+IMAGE_FORMAT="${IMAGE_FORMAT:-docker}"
 CONTAINERFILE="${CONTAINERFILE:-${NEXUS_DIR}/Containerfile}"
 
 YELLOW='\033[1;33m'
@@ -57,6 +58,11 @@ validateInput() {
 
     if [[ "${ALLOW_MISSING_CHECKSUM}" != "true" && "${ALLOW_MISSING_CHECKSUM}" != "false" ]]; then
         logError "ALLOW_MISSING_CHECKSUM must be either true or false"
+        exit 1
+    fi
+
+    if [[ "${IMAGE_FORMAT}" != "docker" && "${IMAGE_FORMAT}" != "oci" ]]; then
+        logError "IMAGE_FORMAT must be either docker or oci"
         exit 1
     fi
 
@@ -118,9 +124,10 @@ verifyChecksum() {
 buildImage() {
     local expected_sha="$1"
 
-    logInfo "Building image ${IMAGE_NAME}:${IMAGE_TAG}"
+    logInfo "Building image ${IMAGE_NAME}:${IMAGE_TAG} (format: ${IMAGE_FORMAT})"
     podman build \
         --pull=always \
+        --format "${IMAGE_FORMAT}" \
         --build-arg "NEXUS_ARCHIVE=${NEXUS_ARCHIVE}" \
         --build-arg "NEXUS_SHA256=${expected_sha}" \
         -t "${IMAGE_NAME}:${IMAGE_TAG}" \
