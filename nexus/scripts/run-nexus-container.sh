@@ -112,4 +112,58 @@ main() {
   mkdir -p "${HOST_DATA_DIR}"
   chmod 750 "${HOST_DATA_DIR}" 2>/dev/null || logWarn "chmod not permitted on ${HOST_DATA_DIR}, continuing"
 
-  if c
+  if container_exists; then
+    logInfo "Removing existing container ${CONTAINER_NAME}"
+    podman rm -f "${CONTAINER_NAME}" >/dev/null
+  fi
+
+  local nofiles_ulimit="${NOFILES_LIMIT/_/:}"
+
+  # Optional runtime args
+  CPU_ARG=()
+  if [ -n "${CPUS_LIMIT}" ]; then
+    # Skip cpu limit in environments without cpu controller delegation for rootless cgroups
+    if [ -r /sys/fs/cgroup/cgroup.controllers ] && grep -qw cpu /sys/fs/cgroup/cgroup.controllers; then
+      CPU_ARG=(--cpus="${CPUS_LIMIT}")
+    else
+      logWarn "CPU controller not available for rootless cgroups; skipping --cpus"
+    fi
+  fi
+
+  MEM_ARG=();  [ -n "${MEMORY_LIMIT}" ] && MEM_ARG=(--memory="${MEMORY_LIMIT}")
+  PIDS_ARG=(); [ -n "${PIDS_LIMIT}" ] && PIDS_ARG=(--pids-limit="${PIDS_LIMIT}")
+  ULIMIT_ARG=(); [ -n "${NOFILES_LIMIT}" ] && ULIMIT_ARG=(--ulimit "nofile=${nofiles_ulimit}")
+
+  logInfo "Starting Nexus container in background"
+  podman run -d \
+    --name "${CONTAINER_NAME}" \
+    --restart=always \
+    --cap-drop=ALL \
+    --security-opt=no-new-privileges \
+    "${PIDS_ARG[@]}" \
+    "${MEM_ARG[@]}" \
+    "${CPU_ARG[@]}" \
+    "${ULIMIT_ARG[@]}" \
+    --tmpfs /tmp:rw,nosuid,nodev,noexec,size=512m \
+    -e "NEXUS_DATA=${NEXUS_DATA_PATH}" \
+    -e "INSTALL4J_ADD_VM_PARAMS=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=512m -Djava.util.prefs.userRoot=${JAVA_PREFS_ROOT}" \
+    -p "${HOST_BIND_ADDRESS}:${HOST_PORT}:${CONTAINER_PORT}" \
+    -v "${HOST_DATA_DIR}:${NEXUS_DATA_PATH}:Z,U" \
+    "${IMAGE_NAME}" >/dev/null
+
+  # Ensure it stays up (Nexus can fail fast on volume perms)
+  sleep 3
+  if ! container_running; then
+    logError "Container ${CONTAINER_NAME} exited during startup"
+    podman ps -a --format "table {{.Names}}\t{{.Status}}\t{{.ExitCode}}"
+    podman logs "${CONTAINER_NAME}" --tail 120 || true
+    exit 1
+  fi
+
+  install_systemd_service
+
+  logSuccess "Container ${CONTAINER_NAME} is up and running!"
+  logInfo "Open Nexus@http://localhost:${HOST_PORT}"
+}
+
+main "$@"
