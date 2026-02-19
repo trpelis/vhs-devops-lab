@@ -60,6 +60,12 @@ validateInput() {
 container_exists() { podman ps -a --format '{{.Names}}' | grep -Fxq "${CONTAINER_NAME}"; }
 container_running() { podman ps --format '{{.Names}}' | grep -Fxq "${CONTAINER_NAME}"; }
 
+user_systemd_usable() {
+  command -v systemctl >/dev/null 2>&1 || return 1
+  # Works even on minimal systems; returns non-zero if user systemd/dbus isn't usable
+  systemctl --user show-environment >/dev/null 2>&1
+}
+
 install_systemd_service() {
   local service_file="container-${CONTAINER_NAME}.service"
   local temp_dir
@@ -78,20 +84,16 @@ install_systemd_service() {
     return
   fi
 
-  if command -v systemctl >/dev/null 2>&1; then
-    mkdir -p "${HOME}/.config/systemd/user"
-    if install -m 0644 "${source_path}" "${HOME}/.config/systemd/user/${service_file}" \
-      && systemctl --user daemon-reload \
-      && systemctl --user enable --now "${service_file}"; then
-      logSuccess "Enabled user systemd service ${service_file}"
-      if command -v loginctl >/dev/null 2>&1; then
-        loginctl enable-linger "$(id -un)" >/dev/null 2>&1 || logWarn "Could not enable linger; user service may require active session"
-      fi
-    else
-      logWarn "User systemd setup failed; leaving --restart=always as fallback"
+  mkdir -p "${HOME}/.config/systemd/user"
+  if install -m 0644 "${source_path}" "${HOME}/.config/systemd/user/${service_file}" \
+    && systemctl --user daemon-reload \
+    && systemctl --user enable --now "${service_file}"; then
+    logSuccess "Enabled user systemd service ${service_file}"
+    if command -v loginctl >/dev/null 2>&1; then
+      loginctl enable-linger "$(id -un)" >/dev/null 2>&1 || logWarn "Could not enable linger; user service may require active session"
     fi
   else
-    logWarn "systemctl not found; leaving --restart=always as fallback"
+    logWarn "User systemd setup failed; leaving --restart=always as fallback"
   fi
 
   rm -rf "${temp_dir}"
@@ -160,7 +162,11 @@ main() {
     exit 1
   fi
 
-  install_systemd_service
+  if user_systemd_usable; then
+    install_systemd_service
+  else
+    logWarn "User systemd not available; leaving --restart=always as fallback"
+  fi
 
   logSuccess "Container ${CONTAINER_NAME} is up and running!"
   logInfo "Open Nexus@http://localhost:${HOST_PORT}"
