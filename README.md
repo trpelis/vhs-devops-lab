@@ -238,3 +238,5 @@ Result:
 ## Result
 
 Nexus runs successfully in a hardened, rootless container with persistent storage and SELinux enabled.
+<img width="2008" height="1206" alt="image" src="https://github.com/user-attachments/assets/9482c314-7b66-428b-9602-b44b168d339b" />
+
